@@ -2,8 +2,12 @@ import numpy as np     # installed with matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import serial
+import tkinter as tk
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.figure import Figure
 
 debug_monitor_only = True
+start_drawing = False
 # functions
 # initialize serial port
 if debug_monitor_only==False:
@@ -13,57 +17,89 @@ if debug_monitor_only==False:
     ser.timeout = 10 # specify the timeout when using readline()
     ser.open()
     if ser.is_open==True:
-	    print("\nAll right, serial port now open. Configuration:\n")
-	    print(ser, "\n") # print serial parameters
+        print("\nAll right, serial port now open. Configuration:\n")
+        print(ser, "\n") # print serial parameters
     else:
         print("\nError when opening the serial port\n")
 
-# Create figure for plotting
-plt.close('all')
-fig = plt.figure()
-ax = fig.add_subplot(1, 1, 1)
-sensorData0 = []
-sensorData1 = []
-sensorData2 = []
-sensorData3 = []
-sensorData4 = []
-sensorData5 = []
-sensorData6 = []
-sensorData7 = []
-sensorData8 = []
-sensorData9 = []
+#-----Sensor data processing ----------
+sensorData0 = np.array([])
+sensorData1 = np.array([])
+sensorData2 = np.array([])
+sensorData3 = np.array([])
+sensorData4 = np.array([])
+sensorData5 = np.array([])
+sensorData6 = np.array([])
+sensorData7 = np.array([])
+sensorData8 = np.array([])
+sensorData9 = np.array([])
 
-def dataPlot(self):
+
+
+def plot_data():
+    global start_drawing, sensorData0
     if debug_monitor_only==False:
         aData = ser.readline()
         aData.decode()
     else:
         aData = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
 
-    sensorData0.append(aData[0])
-    sensorData1.append(aData[1])
-    sensorData2.append(aData[2])
-    sensorData3.append(aData[3])
-    sensorData4.append(aData[4])
-    sensorData5.append(aData[5])
-    sensorData6.append(aData[6])
-    sensorData7.append(aData[7])
-    sensorData8.append(aData[8])
-    sensorData9.append(aData[9])
-    ax.clear()
-    ax.plot(sensorData0, label="sensorData0")
-    ax.plot(sensorData1, label="sensorData1")
-    ax.plot(sensorData2, label="sensorData2")
-    ax.plot(sensorData3, label="sensorData3")
-    ax.plot(sensorData4, label="sensorData4")
-    ax.plot(sensorData5, label="sensorData5")
-    ax.plot(sensorData6, label="sensorData6")
-    ax.plot(sensorData7, label="sensorData7")
-    ax.plot(sensorData8, label="sensorData8")
-    ax.plot(sensorData9, label="sensorData9")
+    if (start_drawing == True):
+        if (len(sensorData0) < 100):
+            sensorData0 = np.append(sensorData0, aData[0])
+        else:
+            sensorData0[0:99] = sensorData0[1:100]
+            sensorData0[99] = aData[0]
+        lines.set_xdata(np.arange(0,len(sensorData0)))
+        lines.set_ydata(sensorData0)
+        canvas.draw()
 
-ani = animation.FuncAnimation(fig, dataPlot, interval = 1000)
-plt.show()
+    root.after(1, plot_data)
+
+def plot_start():
+    global start_drawing
+    start_drawing = True
+
+def plot_stop():
+    global start_drawing
+    start_drawing = False
+
+# Main GUI 
+root = tk.Tk()
+root.title('Real Time Plot')
+root.configure(background = 'light blue')
+root.geometry("900x600")
+
+# Create figure for plotting
+fig = Figure()
+ax = fig.add_subplot(1, 1, 1)
+ax.set_title('Sensors data')
+ax.set_xlabel('Time')
+ax.set_ylabel('Value')
+ax.set_xlim(0,100)
+ax.set_ylim(-0.5,100)
+lines = ax.plot([],[])[0]
+
+canvas = FigureCanvasTkAgg(fig, master=root)
+canvas.get_tk_widget().place(x = 100, y = 100, width = 600, height = 400)
+canvas.draw()
+
+# Create button
+root.update()
+start = tk.Button(root, text = "Start", command = lambda: plot_start())
+start.place(x = 100, y = 500)
+
+root.update()
+stop = tk.Button(root, text = "Stop", command = lambda: plot_stop())
+stop.place(x = 500, y = 500)
+
+root.after(1, plot_data)
+root.mainloop()
+
+
+
+
+
 
 
 
