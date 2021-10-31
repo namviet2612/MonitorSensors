@@ -7,6 +7,7 @@ from tkinter import ttk
 from tkinter import *
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
+import time
 
 #-----Global variables
 debug_monitor_only = False
@@ -14,10 +15,12 @@ start_drawing = False
 ser = serial.Serial()
 comIsOpened = False
 PlotButtonIsPressed = False
+temperatureCounter = 0
 
 #-----Sensor data processing ----------
 sensorData = np.array([])
 aData = np.array([])
+AverageTemp = np.empty(20)
 
 # initialize serial port
 def SerialPortInit(comPort):
@@ -42,12 +45,16 @@ def SerialPortInit(comPort):
 
 def convertAmpe(bufferData0, bufferData1):
     rawData = (bufferData0 << 8) | bufferData1
-    rawData = 4.0 + (16.0 / 4096.0) * rawData
+    rawData = (20.0 / 4096.0) * rawData
+    if rawData <= 4.0:
+        rawData = 4.0
+    else:
+        pass
     return rawData
 
 def convertTemperaturePT100(Ampe):
     tempPT100Value = Ampe * (300.0 / 16.0) - (300.0 / 4.0)
-    return round(tempPT100Value,2)
+    return round(tempPT100Value,1)
 
 def convertAtmosphere(Ampe):
     barValue = Ampe * (10.0 / 16.0) - (10.0 / 4.0)
@@ -63,37 +70,48 @@ def convertHumidity(Ampe):
 
 def convertVoltage(bufferData0, bufferData1):
     rawData = (bufferData0 << 8) | bufferData1
-    rawData = (5.0 / 4096.0) * rawData
+    rawData = (3.3 / 4096.0) * rawData
     return rawData
 
 def convertDistance(volt):
-    distanceValue = volt
+    distanceValue = volt * (2.0 / 3.3) + 0.3
     return round(distanceValue,2)
 
 def convertWeight(volt):
-    weightValue = volt
-    return round(weightValue,2)
+    weightValue = volt * 100.0 / 3.3
+    return round(weightValue,1)
 
 def convertLitre(bufferData0, bufferData1):
     rawData = (bufferData0 << 8) | bufferData1
-    rawData = rawData / 361
-    return round(rawData,2)
+    rawData = (rawData / 361) * (3600 / 0.2) #rawData per 200ms, while we need Data per 1 hour
+    return round(rawData,1)
 
 def convertCounter(bufferData0, bufferData1):
     rawData = (bufferData0 << 8) | bufferData1
     return rawData
 
 def plot_data():
-    global start_drawing, sensorData, comIsOpened, aData, current_Sensor, PlotButtonIsPressed
+    global start_drawing, sensorData, comIsOpened, aData, current_Sensor, PlotButtonIsPressed, temperatureCounter, AverageTemp
+    #t0= time.clock()
     for item in sensorItem:
-        item.entry.delete(0, 'end')
-        item.entry.insert(0, f'{item.value}')
+        if item.number == 0:
+            if (temperatureCounter == 20):
+                temperatureCounter = 0
+                tempAverageValue = round(np.average(AverageTemp),1)
+                item.entry.delete(0, 'end')
+                item.entry.insert(0, f'{tempAverageValue}')
+            else:
+                AverageTemp[temperatureCounter] = item.value
+                temperatureCounter += 1
+        else:
+            item.entry.delete(0, 'end')
+            item.entry.insert(0, f'{item.value}')
     if (PlotButtonIsPressed == True):
         PlotButtonIsPressed = False
         #Try to clear all plot displayed data
         a_list = list(range(0, len(sensorData)))
         sensorData = np.delete(sensorData, a_list)
-        root.after(500, plot_data)
+        root.after(100, plot_data)
         return
     else:
         pass
@@ -101,7 +119,7 @@ def plot_data():
         try:
             aData = list(ser.readline())
             aDataLength = len(aData)
-            if ((aData[0] == 0x55) and (aData[1] == 0xAA) and (aData[aDataLength - 2] == 0xD) and (aData[aDataLength - 1] == 0xA)):
+            if ((aData[0] == 0x55) and (aData[1] == 0xAA) and (aDataLength == 26)):
             #Pattern matched
                 sensorItem[0].value = convertTemperaturePT100(convertAmpe(aData[2], aData[3]))
                 sensorItem[1].value = convertAtmosphere(convertAmpe(aData[4], aData[5]))
@@ -144,7 +162,9 @@ def plot_data():
             for item in sensorItem:
                 item.buttonDisable()
             connectCOM.configure(state=NORMAL)
-    root.after(500, plot_data)
+    root.after(100, plot_data)
+    #t1= time.clock() - t0
+    #print("Time elapsed: ", t1)
 
 def plot_start():
     global start_drawing
@@ -164,11 +184,13 @@ class sensor():
         self.entry = Entry(root, width=10)
         self.label = Label(root, text = lable_name, bg='#0f4b6e', fg='white', width=10, anchor='w')
         self.button = tk.Button(root, text = "Đồ thị", command = lambda: self.plot_startSensor(), state=DISABLED)
+        self.label_unit = Label(root, text = y_title, bg='#0f4b6e', fg='white', width=9, anchor='w')
         self.number = sensorNumber 
-    def placePosition(self, entry_X, entry_Y, label_X, label_Y, button_X, button_Y):        
+    def placePosition(self, entry_X, entry_Y, label_X, label_Y, button_X, button_Y, unit_X, unit_Y):        
         self.entry.place(x = entry_X, y = entry_Y)
         self.label.place(x= label_X, y = label_Y)
         self.button.place(x= button_X, y = button_Y)
+        self.label_unit.place(x= unit_X, y = unit_Y)
     
     def plot_startSensor(self):
         global current_Sensor, fig, canvas, PlotButtonIsPressed
@@ -214,59 +236,70 @@ canvas.draw()
 sensorItem = []
 
 # Create sensor 1
+root.update()
 sensorItem.append(sensor('Nhiệt độ', 0, 0, 0, 350, 'độ C'))
-sensorItem[0].placePosition(800, 100, 720, 100, 720, 125) 
+sensorItem[0].placePosition(800, 100, 720, 100, 720, 125, 800, 125) 
 
 # Create sensor 2
+root.update()
 sensorItem.append(sensor('Áp suất', 1, 0, 0, 15, 'Bar'))
-sensorItem[1].placePosition(800, 175, 720, 175, 720, 200)
+sensorItem[1].placePosition(800, 175, 720, 175, 720, 200, 800, 200)
 
 ## Create sensor 3
+root.update()
 sensorItem.append(sensor('Hồng ngoại', 2, 0, 0, 500, 'độ C'))
-sensorItem[2].placePosition(800, 250, 720, 250, 720, 275)
+sensorItem[2].placePosition(800, 250, 720, 250, 720, 275, 800, 275)
 
 ## Create sensor 4
+root.update()
 sensorItem.append(sensor('Độ ẩm', 3, 0, 0, 100, '%'))
-sensorItem[3].placePosition(800, 325, 720, 325, 720, 350)
+sensorItem[3].placePosition(800, 325, 720, 325, 720, 350, 800, 350)
 
 ## Create sensor 5
+root.update()
 sensorItem.append(sensor('Siêu âm', 4, 0, 0, 5, 'm'))
-sensorItem[4].placePosition(800, 400, 720, 400, 720, 425)
+sensorItem[4].placePosition(800, 400, 720, 400, 720, 425, 800, 425)
 
 ## Create sensor 6
+root.update()
 sensorItem.append(sensor('Khối lượng', 5, 0, 0, 120, 'kg'))
-sensorItem[5].placePosition(800, 475, 720, 475, 720, 500)
+sensorItem[5].placePosition(800, 475, 720, 475, 720, 500, 800, 500)
 
 ## Create sensor 7
-sensorItem.append(sensor('Điện dung', 6, 0, 0, 20, 'mF'))
-sensorItem[6].placePosition(1000, 100, 920, 100, 920, 125)
+sensorItem.append(sensor('Chuyển động', 6, 0, 0, 1000, 'xung'))
+sensorItem[6].placePosition(1000, 100, 920, 100, 920, 125, 1000, 125)
 
 ## Create sensor 8
-sensorItem.append(sensor('Tiệm cận 2', 7, 0, 0, 100, 'xung'))
-sensorItem[7].placePosition(1000, 175, 920, 175, 920, 200)
+sensorItem.append(sensor('Tiệm cận 2', 7, 0, 0, 1000, 'xung'))
+sensorItem[7].placePosition(1000, 175, 920, 175, 920, 200, 1000, 200)
 
 ## Create sensor 9
-sensorItem.append(sensor('Lưu lượng', 8, 0, 0, 100, 'lít'))
-sensorItem[8].placePosition(1000, 250, 920, 250, 920, 275)
+root.update()
+sensorItem.append(sensor('Lưu lượng', 8, 0, 0, 5000, 'lít/h'))
+sensorItem[8].placePosition(1000, 250, 920, 250, 920, 275, 1000, 275)
 
 ##create sensor 10
-sensorItem.append(sensor('Tiệm cận 1', 9, 0, 0, 100, 'xung'))
-sensorItem[9].placePosition(1000, 325, 920, 325, 920, 350)
+root.update()
+sensorItem.append(sensor('Tiệm cận 1', 9, 0, 0, 1000, 'xung'))
+sensorItem[9].placePosition(1000, 325, 920, 325, 920, 350, 1000, 350)
 
 ##create sensor 11
-sensorItem.append(sensor('Chuyển động', 10, 0, 0, 100, 'xung'))
-sensorItem[10].placePosition(1000, 400, 920, 400, 920, 425)
+root.update()
+sensorItem.append(sensor('Điện dung', 10, 0, 0, 1000, 'xung'))
+sensorItem[10].placePosition(1000, 400, 920, 400, 920, 425, 1000, 425)
 
 # Create stop button
 root.update()
 stop = tk.Button(root, text = "Dừng", command = lambda: plot_stop())
-stop.place(x = 400, y = 500)
+stop.place(x = 400, y = 510)
 
 #Create COM label
+root.update()
 comSelectMessage = ttk.Label(root, text = "Lựa chọn cổng COM:")
 comSelectMessage.place(x = 20, y = 20)
 
 #Create combobox to select COM
+root.update()
 comSelected = ttk.Combobox(root, width = 10)
 comSelected.place(x = 150, y = 20)
 
@@ -290,7 +323,13 @@ root.update()
 sTitle = Label(root, text = "BÀN THỰC HÀNH CẢM BIẾN", font=("Arial", 25), background = 'light blue')
 sTitle.place(x= 350, y= 20)
 
-root.after(500, plot_data)
+#Guideline
+root.update()
+sGuideLineText = "Hướng dẫn sử dụng:\nKết nối cảm biến với cần thực hành với mạch đọc tín hiệu\nNhấn vào nút Đồ thị để hiển thị đồ thị cảm biến cần đo "
+sGuideLine = tk.Message(root, text = sGuideLineText, font=("Arial", 12), background = 'light blue', anchor='w',width=500)
+sGuideLine.place(x= 50, y= 600)
+
+root.after(100, plot_data)
 
 root.mainloop()
 
