@@ -8,6 +8,7 @@ from tkinter import *
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 import time
+import win32gui, win32con
 
 #-----Global variables
 debug_monitor_only = False
@@ -211,6 +212,9 @@ class sensor():
     def buttonDisable(self):
         self.button.configure(state=DISABLED)
 
+#Hide console window
+hide = win32gui.GetForegroundWindow()
+win32gui.ShowWindow(hide, win32con.SW_HIDE)
 # Main GUI 
 root = tk.Tk()
 root.title('Bàn thực hành cảm biến')
@@ -270,7 +274,7 @@ sensorItem.append(sensor('Chuyển động', 6, 0, 0, 1000, 'xung'))
 sensorItem[6].placePosition(1000, 100, 920, 100, 920, 125, 1000, 125)
 
 ## Create sensor 8
-sensorItem.append(sensor('Tiệm cận 2', 7, 0, 0, 1000, 'xung'))
+sensorItem.append(sensor('Tiệm cận PNP', 7, 0, 0, 1000, 'xung'))
 sensorItem[7].placePosition(1000, 175, 920, 175, 920, 200, 1000, 200)
 
 ## Create sensor 9
@@ -280,7 +284,7 @@ sensorItem[8].placePosition(1000, 250, 920, 250, 920, 275, 1000, 275)
 
 ##create sensor 10
 root.update()
-sensorItem.append(sensor('Tiệm cận 1', 9, 0, 0, 1000, 'xung'))
+sensorItem.append(sensor('Tiệm cận NPN', 9, 0, 0, 1000, 'xung'))
 sensorItem[9].placePosition(1000, 325, 920, 325, 920, 350, 1000, 350)
 
 ##create sensor 11
